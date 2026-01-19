@@ -1,34 +1,9 @@
 
-import { promises as fs } from 'fs';
-import path from 'path';
 import { NextRequest, NextResponse } from 'next/server';
+import { getAllQuestions, writeAllQuestions } from '@/lib/questions';
 
-const questionsFilePath = path.join(process.cwd(), 'app', 'data', 'questions.json');
-
-interface Question {
-  id: number;
-  text: string;
-}
-
-interface AllQuestions {
-  [category: string]: Question[];
-}
-
-// Helper function to read questions safely
-async function getQuestions(): Promise<AllQuestions> {
-  try {
-    const data = await fs.readFile(questionsFilePath, 'utf8');
-    if (data.trim() === '') {
-      return { general: [], 'rapid-reading-3-min': [] };
-    }
-    return JSON.parse(data);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return { general: [], 'rapid-reading-3-min': [] };
-    }
-    throw error;
-  }
-}
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 
 export async function DELETE(
@@ -43,18 +18,22 @@ export async function DELETE(
       return NextResponse.json({ error: 'Invalid question ID' }, { status: 400 });
     }
 
-    const allQuestions = await getQuestions();
+    const allQuestions = await getAllQuestions();
     let questionFound = false;
 
     // Find the question and remove it
     for (const category in allQuestions) {
-      const questionsInCategory = allQuestions[category];
-      const questionIndex = questionsInCategory.findIndex(q => q.id === idToDelete);
-
-      if (questionIndex !== -1) {
-        questionsInCategory.splice(questionIndex, 1);
-        questionFound = true;
-        break; // Stop searching once found and removed
+      const categorySets = allQuestions[category].sets;
+      for (const set of categorySets) {
+        const questionIndex = set.questions.findIndex(q => q.id === idToDelete);
+        if (questionIndex !== -1) {
+          set.questions.splice(questionIndex, 1);
+          questionFound = true;
+          break;
+        }
+      }
+      if (questionFound) {
+        break;
       }
     }
 
@@ -62,7 +41,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Question not found' }, { status: 404 });
     }
 
-    await fs.writeFile(questionsFilePath, JSON.stringify(allQuestions, null, 2));
+    await writeAllQuestions(allQuestions);
 
     return NextResponse.json({ message: 'Question deleted successfully' }, { status: 200 });
 

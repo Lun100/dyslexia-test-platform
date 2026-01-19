@@ -1,54 +1,61 @@
 
-import { promises as fs } from 'fs';
-import path from 'path';
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  flattenQuestions,
+  getAllQuestions,
+  getMaxQuestionId,
+  writeAllQuestions,
+} from '@/lib/questions';
 
-const questionsFilePath = path.join(process.cwd(), 'app', 'data', 'questions.json');
-
-interface Question {
-  id: number;
-  text: string;
-}
-
-// New interface for the entire data structure
-interface AllQuestions {
-  [category: string]: Question[];
-}
-
-// Helper function to read questions safely
-async function getQuestions(): Promise<AllQuestions> {
-  try {
-    const data = await fs.readFile(questionsFilePath, 'utf8');
-    // If the file is empty, JSON.parse will fail. Return a default structure.
-    if (data.trim() === '') {
-      return { general: [], 'rapid-reading-3-min': [] };
-    }
-    return JSON.parse(data);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      // If file does not exist, return default structure
-      return { general: [], 'rapid-reading-3-min': [] };
-    }
-    throw error;
-  }
-}
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
   try {
-    const allQuestions = await getQuestions();
+    console.log('[questions][GET] url=', req.url);
+    const allQuestions = await getAllQuestions();
+    console.log('[questions][GET] categories=', Object.keys(allQuestions));
     const { searchParams } = new URL(req.url);
     const category = searchParams.get('category');
+    const randomSet = searchParams.get('randomSet');
+    const flatten = searchParams.get('flatten');
 
     if (category) {
-      const categoryQuestions = allQuestions[category] || [];
-      return NextResponse.json(categoryQuestions);
+      const categoryData = allQuestions[category];
+
+      if (!categoryData) {
+        return NextResponse.json({ sets: [] });
+      }
+
+      if (randomSet === '1') {
+        const availableSets = categoryData.sets.filter((set) => set.questions.length > 0);
+        if (availableSets.length === 0) {
+          return NextResponse.json({ setId: null, setName: null, questions: [] });
+        }
+        const randomIndex = Math.floor(Math.random() * availableSets.length);
+        const selectedSet = availableSets[randomIndex];
+        console.log('[questions][GET] random set=', selectedSet.id);
+        return NextResponse.json({
+          setId: selectedSet.id,
+          setName: selectedSet.name,
+          questions: selectedSet.questions,
+        });
+      }
+
+      if (flatten === '1') {
+        const flattened = flattenQuestions(allQuestions, category);
+        return NextResponse.json(flattened);
+      }
+
+      return NextResponse.json(categoryData);
     }
 
     // For backward compatibility with the manage page, flatten all questions
-    const flattenedQuestions = Object.values(allQuestions).flat();
+    const flattenedQuestions = flattenQuestions(allQuestions);
+    console.log('[questions][GET] flattened_count=', flattenedQuestions.length);
     return NextResponse.json(flattenedQuestions);
   } catch (error) {
-    console.error('Failed to read questions:', error);
+    console.error('[questions][GET] Failed to read questions:', error);
     return NextResponse.json({ error: 'Failed to read questions' }, { status: 500 });
   }
 }
@@ -62,25 +69,28 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Question text is required' }, { status: 400 });
     }
 
-    const allQuestions = await getQuestions();
-
+    const allQuestions = await getAllQuestions();
     if (!allQuestions[category]) {
-      // If the category doesn't exist, create it.
-      allQuestions[category] = [];
+      allQuestions[category] = { sets: [] };
     }
 
-    // Find the max ID across ALL questions to ensure uniqueness
-    const allIds = Object.values(allQuestions).flat().map(q => q.id);
-    const maxId = allIds.length > 0 ? Math.max(...allIds) : 0;
-
-    const newQuestion: Question = {
+    const maxId = getMaxQuestionId(allQuestions);
+    const newQuestion = {
       id: maxId + 1,
       text,
     };
 
-    allQuestions[category].push(newQuestion);
+    if (!allQuestions[category].sets[0]) {
+      allQuestions[category].sets.push({
+        id: 'set-1',
+        name: '测试集 1',
+        questions: [],
+      });
+    }
 
-    await fs.writeFile(questionsFilePath, JSON.stringify(allQuestions, null, 2));
+    allQuestions[category].sets[0].questions.push(newQuestion);
+
+    await writeAllQuestions(allQuestions);
 
     return NextResponse.json({ message: 'Question added successfully', question: newQuestion }, { status: 201 });
 

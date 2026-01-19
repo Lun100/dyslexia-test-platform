@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 const categoryDisplayNames: { [key: string]: string } = {
   'general': '通用问题测试',
   'rapid-reading-3-min': '三分钟快速阅读测试',
+  'number-naming': '数字快速命名测验',
 };
 
 export default function TestSelectionPage() {
@@ -16,7 +17,7 @@ export default function TestSelectionPage() {
   useEffect(() => {
     const fetchCategories = async () => {
       try {
-        const response = await fetch('/api/questions/categories');
+        const response = await fetch('/api/questions/categories', { cache: 'no-store' });
         if (!response.ok) {
           throw new Error('获取测试分类失败');
         }
@@ -68,6 +69,11 @@ export default function TestSelectionPage() {
               没有可用的测试。请先 <a href="/upload" className="underline">上传题目</a>。
             </p>
           )}
+          <Link href="/test/number-naming">
+            <div className="block w-full rounded-lg bg-white p-6 text-center text-xl font-semibold text-blue-600 shadow-md transition-transform hover:scale-105 hover:bg-blue-50 dark:bg-zinc-900 dark:text-blue-400 dark:hover:bg-zinc-800">
+              {categoryDisplayNames['number-naming']}
+            </div>
+          </Link>
         </div>
         <div className="mt-8 text-center">
           <Link href="/">

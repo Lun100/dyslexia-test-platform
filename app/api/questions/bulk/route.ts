@@ -1,47 +1,22 @@
-import { promises as fs } from 'fs';
-import path from 'path';
 import { NextRequest, NextResponse } from 'next/server';
+import { getAllQuestions, getMaxQuestionId, writeAllQuestions } from '@/lib/questions';
 
-const questionsFilePath = path.join(process.cwd(), 'app', 'data', 'questions.json');
-
-interface Question {
-  id: number;
-  text: string;
-}
-
-interface AllQuestions {
-  [category: string]: Question[];
-}
-
-// Helper function to read questions safely
-async function getQuestions(): Promise<AllQuestions> {
-  try {
-    const data = await fs.readFile(questionsFilePath, 'utf8');
-    if (data.trim() === '') {
-      return { general: [], 'rapid-reading-3-min': [] };
-    }
-    return JSON.parse(data);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return { general: [], 'rapid-reading-3-min': [] };
-    }
-    throw error;
-  }
-}
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { content, category } = body;
+    const { content, category, setName } = body;
 
     if (!content || !category) {
       return NextResponse.json({ error: 'File content and category are required' }, { status: 400 });
     }
 
-    const allQuestions = await getQuestions();
+    const allQuestions = await getAllQuestions();
 
     if (!allQuestions[category]) {
-      allQuestions[category] = [];
+      allQuestions[category] = { sets: [] };
     }
 
     const sentences = content.split('\n').filter((line: string) => line.trim() !== '');
@@ -49,26 +24,47 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'File content is empty or invalid' }, { status: 400 });
     }
 
-    // Find the max ID across ALL questions to ensure uniqueness
-    let maxId = 0;
-    Object.values(allQuestions).flat().forEach(q => {
-        if(q.id > maxId) {
-            maxId = q.id;
-        }
-    });
+    let maxId = getMaxQuestionId(allQuestions);
+    let nextSetIndex = allQuestions[category].sets.length + 1;
+    let insertedCount = 0;
+    const trimmedSetName = typeof setName === 'string' ? setName.trim() : '';
 
-    const newQuestions: Question[] = sentences.map((sentence: string, index: number) => {
-      return {
-        id: maxId + 1 + index,
-        text: sentence.trim(),
-      };
-    });
+    const shouldChunk = category === 'rapid-reading-3-min' && sentences.length > 100;
+    const chunkSize = shouldChunk ? 100 : sentences.length;
 
-    allQuestions[category].push(...newQuestions);
+    for (let i = 0; i < sentences.length; i += chunkSize) {
+      const chunk = sentences.slice(i, i + chunkSize);
+      const questions = chunk.map((sentence: string) => {
+        maxId += 1;
+        return {
+          id: maxId,
+          text: sentence.trim(),
+        };
+      });
 
-    await fs.writeFile(questionsFilePath, JSON.stringify(allQuestions, null, 2));
+      const setNumber = nextSetIndex;
+      const resolvedSetName = trimmedSetName
+        ? shouldChunk
+          ? `${trimmedSetName} ${setNumber}`
+          : trimmedSetName
+        : `测试集 ${setNumber}`;
 
-    return NextResponse.json({ message: `${newQuestions.length} questions added successfully to category '${category}'` }, { status: 201 });
+      allQuestions[category].sets.push({
+        id: `set-${nextSetIndex}`,
+        name: resolvedSetName,
+        questions,
+      });
+
+      nextSetIndex += 1;
+      insertedCount += questions.length;
+    }
+
+    await writeAllQuestions(allQuestions);
+
+    return NextResponse.json(
+      { message: `${insertedCount} questions added successfully to category '${category}'` },
+      { status: 201 },
+    );
 
   } catch (error) {
     console.error('Failed to bulk write questions:', error);

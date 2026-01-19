@@ -6,6 +6,8 @@ import { useState } from 'react';
 export default function UploadPage() {
   const [file, setFile] = useState<File | null>(null);
   const [category, setCategory] = useState('rapid-reading-3-min');
+  const [setName, setSetName] = useState('');
+  const [numberGridContent, setNumberGridContent] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -17,10 +19,6 @@ export default function UploadPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!file) {
-      setMessage('请选择一个文件');
-      return;
-    }
     if (!category) {
       setMessage('请选择一个测试分类');
       return;
@@ -28,6 +26,45 @@ export default function UploadPage() {
 
     setLoading(true);
     setMessage('');
+
+    if (category === 'number-naming') {
+      if (!numberGridContent.trim()) {
+        setMessage('请输入数字表格 JSON');
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/number-grid', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ content: numberGridContent }),
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+          setMessage('数字表格已保存');
+          setNumberGridContent('');
+        } else {
+          setMessage(`上传失败: ${result.error}`);
+        }
+      } catch (error) {
+        setMessage('上传时发生未知错误');
+        console.error(error);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    if (!file) {
+      setMessage('请选择一个文件');
+      setLoading(false);
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = async (event) => {
@@ -44,7 +81,7 @@ export default function UploadPage() {
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ content, category }),
+          body: JSON.stringify({ content, category, setName }),
         });
 
         const result = await response.json();
@@ -52,6 +89,7 @@ export default function UploadPage() {
         if (response.ok) {
           setMessage(result.message);
           setFile(null);
+          setSetName('');
           // Reset the file input visually
           const fileInput = document.getElementById('file-upload') as HTMLInputElement;
           if(fileInput) fileInput.value = '';
@@ -93,20 +131,51 @@ export default function UploadPage() {
             >
               <option value="rapid-reading-3-min">三分钟快速阅读测试</option>
               <option value="general">通用问题</option>
+              <option value="number-naming">数字快速命名测验</option>
             </select>
           </div>
-          <div>
-            <label htmlFor="file-upload" className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
-              选择题目文件 (.txt)
-            </label>
-            <input
-              id="file-upload"
-              type="file"
-              accept=".txt"
-              onChange={handleFileChange}
-              className="w-full rounded-lg border border-zinc-300 text-lg file:mr-4 file:border-0 file:bg-zinc-100 file:px-4 file:py-3 hover:file:bg-zinc-200 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:file:bg-zinc-800 dark:file:text-zinc-200 dark:hover:file:bg-zinc-700"
-            />
-          </div>
+          {category === 'number-naming' ? (
+            <div>
+              <label htmlFor="number-grid" className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                数字表格 JSON（二维数组）
+              </label>
+              <textarea
+                id="number-grid"
+                value={numberGridContent}
+                onChange={(e) => setNumberGridContent(e.target.value)}
+                placeholder='例如：[[8,3,6],[4,7,2],[9,1,8]]'
+                className="min-h-[200px] w-full rounded-lg border border-zinc-300 p-4 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+              />
+            </div>
+          ) : (
+            <>
+              <div>
+                <label htmlFor="set-name" className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  测试集名称（可选）
+                </label>
+                <input
+                  id="set-name"
+                  type="text"
+                  value={setName}
+                  onChange={(e) => setSetName(e.target.value)}
+                  placeholder="例如：一年级-阅读测试"
+                  className="w-full rounded-lg border border-zinc-300 p-4 text-lg dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+                />
+              </div>
+              <div>
+                <label htmlFor="file-upload" className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  选择题目文件 (.txt)
+                </label>
+                <input
+                  id="file-upload"
+                  type="file"
+                  accept=".txt"
+                  onChange={handleFileChange}
+                  className="w-full rounded-lg border border-zinc-300 text-lg file:mr-4 file:border-0 file:bg-zinc-100 file:px-4 file:py-3 hover:file:bg-zinc-200 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:file:bg-zinc-800 dark:file:text-zinc-200 dark:hover:file:bg-zinc-700"
+                />
+              </div>
+            </>
+          )}
           <button
             type="submit"
             disabled={loading}

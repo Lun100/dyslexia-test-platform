@@ -16,7 +16,7 @@ export default function Home() {
           </button>
         </Link>
 
-        <div className="flex gap-8">
+        <div className="flex flex-wrap justify-center gap-8">
           <Link href="/upload">
             <span className="text-zinc-500 underline hover:text-zinc-700 dark:hover:text-zinc-300">
               上传题目
@@ -25,6 +25,16 @@ export default function Home() {
           <Link href="/manage">
             <span className="text-zinc-500 underline hover:text-zinc-700 dark:hover:text-zinc-300">
               管理题目
+            </span>
+          </Link>
+          <Link href="/results">
+            <span className="text-zinc-500 underline hover:text-zinc-700 dark:hover:text-zinc-300">
+              查看测试数据
+            </span>
+          </Link>
+          <Link href="/login">
+            <span className="text-zinc-500 underline hover:text-zinc-700 dark:hover:text-zinc-300">
+              登录
             </span>
           </Link>
         </div>
